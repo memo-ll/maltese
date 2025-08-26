@@ -1,0 +1,624 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>猫猫版2048</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://cdn.jsdelivr.net/npm/font-awesome@4.7.0/css/font-awesome.min.css" rel="stylesheet">
+    
+    <!-- 配置Tailwind自定义颜色和字体 -->
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        primary: '#f97316', // 温暖橙色作为主色调
+                        secondary: '#fb923c', // 浅橙色作为辅助色
+                        accent: '#fdba74', // 更浅的橙色作为强调色
+                        light: '#fff7ed', // 浅色背景
+                        dark: '#4b5563', // 深色文本
+                    },
+                    fontFamily: {
+                        cute: ['"Comic Sans MS"', '"Marker Felt"', 'sans-serif'],
+                    },
+                }
+            }
+        }
+    </script>
+    
+    <style type="text/tailwindcss">
+        @layer utilities {
+            .content-auto {
+                content-visibility: auto;
+            }
+            .text-shadow {
+                text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.2);
+            }
+            .tile-transition {
+                transition: all 0.2s ease;
+            }
+            .scale-in {
+                animation: scaleIn 0.2s ease-out;
+            }
+            .merge-animation {
+                animation: merge 0.3s ease-in-out;
+            }
+            .game-shadow {
+                box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.1), 0 8px 10px -6px rgba(0, 0, 0, 0.1);
+            }
+            .square-tile {
+                aspect-ratio: 1/1;
+            }
+        }
+        
+        @keyframes scaleIn {
+            0% { transform: scale(0); }
+            100% { transform: scale(1); }
+        }
+        
+        @keyframes merge {
+            0% { transform: scale(1); }
+            50% { transform: scale(1.2); }
+            100% { transform: scale(1); }
+        }
+    </style>
+</head>
+<body class="bg-gradient-to-br from-orange-50 to-amber-50 min-h-screen font-cute text-dark">
+    <div class="container mx-auto px-4 py-8 max-w-3xl">
+        <!-- 游戏标题和分数面板 -->
+        <header class="mb-6 flex flex-col md:flex-row justify-between items-center">
+            <div>
+                <h1 class="text-[clamp(2rem,5vw,3rem)] font-bold text-primary text-shadow flex items-center">
+                    <i class="fa fa-paw mr-2 text-secondary"></i>
+                    猫猫版2048
+                </h1>
+                <p class="text-dark/70 text-sm md:text-base">合并可爱猫咪，获得终极喵星人！</p>
+            </div>
+            
+            <div class="flex gap-4 mt-4 md:mt-0">
+                <div class="bg-secondary/20 rounded-lg p-3 text-center min-w-[80px]">
+                    <div class="text-xs uppercase text-dark/70">分数</div>
+                    <div id="score" class="text-2xl font-bold text-primary">0</div>
+                </div>
+                <div class="bg-secondary/20 rounded-lg p-3 text-center min-w-[80px]">
+                    <div class="text-xs uppercase text-dark/70">最高分</div>
+                    <div id="highScore" class="text-2xl font-bold text-primary">0</div>
+                </div>
+            </div>
+        </header>
+        
+        <!-- 游戏控制区 -->
+        <div class="flex justify-between items-center mb-4">
+            <button id="newGame" class="bg-primary hover:bg-primary/90 text-white py-2 px-6 rounded-lg transition-all duration-200 flex items-center shadow-md hover:shadow-lg">
+                <i class="fa fa-refresh mr-2"></i> 新游戏
+            </button>
+            <button id="howToPlay" class="bg-accent/50 hover:bg-accent/70 text-dark py-2 px-4 rounded-lg transition-all duration-200 flex items-center">
+                <i class="fa fa-question-circle mr-2"></i> 玩法
+            </button>
+        </div>
+        
+        <!-- 游戏棋盘 -->
+        <div class="relative bg-secondary/30 rounded-xl p-4 md:p-6 game-shadow mb-6 mx-auto" style="max-width: min(90vw, 500px);">
+            <div id="gameBoard" class="grid grid-cols-4 gap-3 md:gap-4 w-full">
+                <!-- 游戏格子将通过JS动态生成 -->
+            </div>
+            
+            <!-- 游戏结束遮罩 -->
+            <div id="gameOver" class="absolute inset-0 bg-dark/70 rounded-xl flex flex-col items-center justify-center text-white hidden">
+                <h2 class="text-2xl md:text-3xl font-bold mb-4">游戏结束！</h2>
+                <p class="mb-6">再试一次吧！</p>
+                <button id="restartAfterGameOver" class="bg-primary hover:bg-primary/90 text-white py-2 px-6 rounded-lg transition-all duration-200">
+                    再来一局
+                </button>
+            </div>
+            
+            <!-- 胜利遮罩 -->
+            <div id="gameWin" class="absolute inset-0 bg-primary/50 rounded-xl flex flex-col items-center justify-center text-white hidden">
+                <h2 class="text-2xl md:text-3xl font-bold mb-4">恭喜你赢了！</h2>
+                <p class="mb-6">你获得了终极喵星人！</p>
+                <button id="continuePlaying" class="bg-white/20 hover:bg-white/30 text-white py-2 px-6 rounded-lg transition-all duration-200 mr-3">
+                    继续游戏
+                </button>
+                <button id="restartAfterWin" class="bg-primary hover:bg-primary/90 text-white py-2 px-6 rounded-lg transition-all duration-200">
+                    再来一局
+                </button>
+            </div>
+        </div>
+        
+        <!-- 移动设备控制按钮 -->
+        <div class="md:hidden grid grid-cols-3 gap-2 mb-6 max-w-[200px] mx-auto">
+            <div class="col-start-2">
+                <button id="up" class="w-full bg-secondary/30 hover:bg-secondary/50 text-dark p-3 rounded-lg transition-all duration-200">
+                    <i class="fa fa-arrow-up"></i>
+                </button>
+            </div>
+            <div class="col-start-1 row-start-2">
+                <button id="left" class="w-full bg-secondary/30 hover:bg-secondary/50 text-dark p-3 rounded-lg transition-all duration-200">
+                    <i class="fa fa-arrow-left"></i>
+                </button>
+            </div>
+            <div class="col-start-2 row-start-2">
+                <button id="down" class="w-full bg-secondary/30 hover:bg-secondary/50 text-dark p-3 rounded-lg transition-all duration-200">
+                    <i class="fa fa-arrow-down"></i>
+                </button>
+            </div>
+            <div class="col-start-3 row-start-2">
+                <button id="right" class="w-full bg-secondary/30 hover:bg-secondary/50 text-dark p-3 rounded-lg transition-all duration-200">
+                    <i class="fa fa-arrow-right"></i>
+                </button>
+            </div>
+        </div>
+        
+        <!-- 游戏说明模态框 -->
+        <div id="instructionsModal" class="fixed inset-0 bg-dark/70 flex items-center justify-center z-50 hidden">
+            <div class="bg-light rounded-xl p-6 max-w-md w-full mx-4">
+                <h3 class="text-xl font-bold text-primary mb-4">游戏玩法</h3>
+                <ul class="list-disc pl-5 space-y-2 mb-4">
+                    <li>使用方向键或滑动屏幕移动猫咪方块</li>
+                    <li>相同的猫咪会合并成更稀有的猫咪</li>
+                    <li>尝试获得终极喵星人!</li>
+                    <li>当棋盘填满且无法移动时，游戏结束</li>
+                </ul>
+                <div class="flex flex-wrap gap-2 mt-4">
+                    <div class="flex items-center bg-gray-100 px-2 py-1 rounded">
+                        <img src="./cat2.gif" alt="2号猫咪" class="w-6 h-6 mr-2 rounded" onerror="this.src='https://picsum.photos/id/40/30/30'">
+                        <span>2号猫咪</span>
+                    </div>
+                    <div class="flex items-center bg-gray-100 px-2 py-1 rounded">
+                        <img src="./cat4.gif" alt="4号猫咪" class="w-6 h-6 mr-2 rounded" onerror="this.src='https://picsum.photos/id/41/30/30'">
+                        <span>4号猫咪</span>
+                    </div>
+                    <div class="flex items-center bg-gray-100 px-2 py-1 rounded">
+                        <img src="./cat8.gif" alt="8号猫咪" class="w-6 h-6 mr-2 rounded" onerror="this.src='https://picsum.photos/id/42/30/30'">
+                        <span>8号猫咪</span>
+                    </div>
+                    <div class="flex items-center bg-gray-100 px-2 py-1 rounded">
+                        <img src="./cat16.gif" alt="16号猫咪" class="w-6 h-6 mr-2 rounded" onerror="this.src='https://picsum.photos/id/43/30/30'">
+                        <span>16号猫咪</span>
+                    </div>
+                </div>
+                <button id="closeInstructions" class="mt-6 bg-primary hover:bg-primary/90 text-white py-2 px-6 rounded-lg transition-all duration-200 w-full">
+                    开始游戏
+                </button>
+            </div>
+        </div>
+        
+        <!-- 页脚 -->
+        <footer class="text-center text-dark/60 text-sm mt-8">
+            <p>猫猫版2048 &copy; 2023 - 用<span class="text-primary">❤️</span>制作</p>
+        </footer>
+    </div>
+
+    <script>
+        // 相对路径 - 与HTML文件同一目录下
+        const catImages = {
+            2: "./cat2.gif",
+            4: "./cat4.gif",
+            8: "./cat8.gif",
+            16: "./cat16.gif",
+            32: "./cat32.gif",
+            64: "./cat64.gif",
+            128: "./cat128.gif",
+            256: "./cat256.gif",
+            512: "./cat512.gif",
+            1024: "./cat1024.gif",
+            2048: "./cat2048.gif"
+        };
+        
+        // 备用图片，当本地GIF加载失败时使用
+        const fallbackCatImages = {
+            2: "https://picsum.photos/id/40/200/200",
+            4: "https://picsum.photos/id/41/200/200",
+            8: "https://picsum.photos/id/42/200/200",
+            16: "https://picsum.photos/id/43/200/200",
+            32: "https://picsum.photos/id/44/200/200",
+            64: "https://picsum.photos/id/45/200/200",
+            128: "https://picsum.photos/id/46/200/200",
+            256: "https://picsum.photos/id/47/200/200",
+            512: "https://picsum.photos/id/48/200/200",
+            1024: "https://picsum.photos/id/49/200/200",
+            2048: "https://picsum.photos/id/50/200/200"
+        };
+        
+        // 猫咪方块背景颜色
+        const tileColors = {
+            2: "bg-orange-100",
+            4: "bg-orange-200",
+            8: "bg-amber-200",
+            16: "bg-amber-300",
+            32: "bg-yellow-300",
+            64: "bg-yellow-400",
+            128: "bg-lime-300",
+            256: "bg-lime-400",
+            512: "bg-green-300",
+            1024: "bg-green-400",
+            2048: "bg-emerald-400"
+        };
+        
+        // 游戏状态
+        let gameBoard = [];
+        let score = 0;
+        let highScore = localStorage.getItem('cat2048HighScore') || 0;
+        let gameOver = false;
+        let gameWon = false;
+        let canMove = true;
+        
+        // DOM 元素
+        const gameBoardElement = document.getElementById('gameBoard');
+        const scoreElement = document.getElementById('score');
+        const highScoreElement = document.getElementById('highScore');
+        const newGameButton = document.getElementById('newGame');
+        const gameOverElement = document.getElementById('gameOver');
+        const gameWinElement = document.getElementById('gameWin');
+        const restartAfterGameOverButton = document.getElementById('restartAfterGameOver');
+        const restartAfterWinButton = document.getElementById('restartAfterWin');
+        const continuePlayingButton = document.getElementById('continuePlaying');
+        const howToPlayButton = document.getElementById('howToPlay');
+        const instructionsModal = document.getElementById('instructionsModal');
+        const closeInstructionsButton = document.getElementById('closeInstructions');
+        const directionButtons = {
+            up: document.getElementById('up'),
+            down: document.getElementById('down'),
+            left: document.getElementById('left'),
+            right: document.getElementById('right')
+        };
+        
+        // 初始化游戏
+        function initGame() {
+            gameBoard = Array(4).fill().map(() => Array(4).fill(0));
+            score = 0;
+            gameOver = false;
+            gameWon = false;
+            updateScore();
+            highScoreElement.textContent = highScore;
+            addNewTile();
+            addNewTile();
+            renderGameBoard();
+            gameOverElement.classList.add('hidden');
+            gameWinElement.classList.add('hidden');
+        }
+        
+        function renderGameBoard() {
+            gameBoardElement.innerHTML = '';
+            for (let row = 0; row < 4; row++) {
+                for (let col = 0; col < 4; col++) {
+                    const value = gameBoard[row][col];
+                    const tile = document.createElement('div');
+                    tile.className = `rounded-lg flex items-center justify-center tile-transition square-tile
+                                     ${value === 0 ? 'bg-secondary/10' : tileColors[value]}`;
+                    
+                    if (value !== 0) {
+                        const imgContainer = document.createElement('div');
+                        imgContainer.className = 'max-w-[80%] max-h-[80%] rounded overflow-hidden scale-in';
+                        
+                        const img = document.createElement('img');
+                        img.src = catImages[value];
+                        img.alt = `${value}号猫咪`;
+                        img.className = 'w-full h-full object-cover';
+                        
+                        // 加载失败时使用备用图片
+                        img.onerror = function() {
+                            this.src = fallbackCatImages[value];
+                        };
+                        
+                        imgContainer.appendChild(img);
+                        tile.appendChild(imgContainer);
+                        
+                        const valueLabel = document.createElement('div');
+                        valueLabel.className = 'absolute bottom-1 right-1 text-xs font-bold text-dark/70';
+                        valueLabel.textContent = value;
+                        tile.appendChild(valueLabel);
+                    }
+                    
+                    gameBoardElement.appendChild(tile);
+                }
+            }
+        }
+        
+        // 其他游戏函数（保持不变）
+        function addNewTile() {
+            const emptyTiles = [];
+            for (let row = 0; row < 4; row++) {
+                for (let col = 0; col < 4; col++) {
+                    if (gameBoard[row][col] === 0) {
+                        emptyTiles.push({ row, col });
+                    }
+                }
+            }
+            
+            if (emptyTiles.length === 0) {
+                return false;
+            }
+            
+            const randomIndex = Math.floor(Math.random() * emptyTiles.length);
+            const { row, col } = emptyTiles[randomIndex];
+            gameBoard[row][col] = Math.random() < 0.9 ? 2 : 4;
+            
+            return true;
+        }
+        
+        function updateScore(points = 0) {
+            score += points;
+            scoreElement.textContent = score;
+            
+            if (score > highScore) {
+                highScore = score;
+                highScoreElement.textContent = highScore;
+                localStorage.setItem('cat2048HighScore', highScore);
+            }
+        }
+        
+        function checkWin() {
+            for (let row = 0; row < 4; row++) {
+                for (let col = 0; col < 4; col++) {
+                    if (gameBoard[row][col] === 2048 && !gameWon) {
+                        gameWon = true;
+                        gameWinElement.classList.remove('hidden');
+                        return true;
+                    }
+                }
+            }
+            return false;
+        }
+        
+        function checkGameOver() {
+            for (let row = 0; row < 4; row++) {
+                for (let col = 0; col < 4; col++) {
+                    if (gameBoard[row][col] === 0) {
+                        return false;
+                    }
+                }
+            }
+            
+            for (let row = 0; row < 4; row++) {
+                for (let col = 0; col < 3; col++) {
+                    if (gameBoard[row][col] === gameBoard[row][col + 1]) {
+                        return false;
+                    }
+                }
+            }
+            
+            for (let col = 0; col < 4; col++) {
+                for (let row = 0; row < 3; row++) {
+                    if (gameBoard[row][col] === gameBoard[row + 1][col]) {
+                        return false;
+                    }
+                }
+            }
+            
+            gameOver = true;
+            gameOverElement.classList.remove('hidden');
+            return true;
+        }
+        
+        function moveUp() {
+            if (!canMove) return false;
+            canMove = false;
+            
+            let moved = false;
+            
+            for (let col = 0; col < 4; col++) {
+                for (let row = 1; row < 4; row++) {
+                    if (gameBoard[row][col] !== 0) {
+                        let currentRow = row;
+                        
+                        while (currentRow > 0 && gameBoard[currentRow - 1][col] === 0) {
+                            gameBoard[currentRow - 1][col] = gameBoard[currentRow][col];
+                            gameBoard[currentRow][col] = 0;
+                            currentRow--;
+                            moved = true;
+                        }
+                        
+                        if (currentRow > 0 && gameBoard[currentRow - 1][col] === gameBoard[currentRow][col]) {
+                            gameBoard[currentRow - 1][col] *= 2;
+                            updateScore(gameBoard[currentRow - 1][col]);
+                            gameBoard[currentRow][col] = 0;
+                            moved = true;
+                        }
+                    }
+                }
+            }
+            
+            processMove(moved);
+            return moved;
+        }
+        
+        function moveDown() {
+            if (!canMove) return false;
+            canMove = false;
+            
+            let moved = false;
+            
+            for (let col = 0; col < 4; col++) {
+                for (let row = 2; row >= 0; row--) {
+                    if (gameBoard[row][col] !== 0) {
+                        let currentRow = row;
+                        
+                        while (currentRow < 3 && gameBoard[currentRow + 1][col] === 0) {
+                            gameBoard[currentRow + 1][col] = gameBoard[currentRow][col];
+                            gameBoard[currentRow][col] = 0;
+                            currentRow++;
+                            moved = true;
+                        }
+                        
+                        if (currentRow < 3 && gameBoard[currentRow + 1][col] === gameBoard[currentRow][col]) {
+                            gameBoard[currentRow + 1][col] *= 2;
+                            updateScore(gameBoard[currentRow + 1][col]);
+                            gameBoard[currentRow][col] = 0;
+                            moved = true;
+                        }
+                    }
+                }
+            }
+            
+            processMove(moved);
+            return moved;
+        }
+        
+        function moveLeft() {
+            if (!canMove) return false;
+            canMove = false;
+            
+            let moved = false;
+            
+            for (let row = 0; row < 4; row++) {
+                for (let col = 1; col < 4; col++) {
+                    if (gameBoard[row][col] !== 0) {
+                        let currentCol = col;
+                        
+                        while (currentCol > 0 && gameBoard[row][currentCol - 1] === 0) {
+                            gameBoard[row][currentCol - 1] = gameBoard[row][currentCol];
+                            gameBoard[row][currentCol] = 0;
+                            currentCol--;
+                            moved = true;
+                        }
+                        
+                        if (currentCol > 0 && gameBoard[row][currentCol - 1] === gameBoard[row][currentCol]) {
+                            gameBoard[row][currentCol - 1] *= 2;
+                            updateScore(gameBoard[row][currentCol - 1]);
+                            gameBoard[row][currentCol] = 0;
+                            moved = true;
+                        }
+                    }
+                }
+            }
+            
+            processMove(moved);
+            return moved;
+        }
+        
+        function moveRight() {
+            if (!canMove) return false;
+            canMove = false;
+            
+            let moved = false;
+            
+            for (let row = 0; row < 4; row++) {
+                for (let col = 2; col >= 0; col--) {
+                    if (gameBoard[row][col] !== 0) {
+                        let currentCol = col;
+                        
+                        while (currentCol < 3 && gameBoard[row][currentCol + 1] === 0) {
+                            gameBoard[row][currentCol + 1] = gameBoard[row][currentCol];
+                            gameBoard[row][currentCol] = 0;
+                            currentCol++;
+                            moved = true;
+                        }
+                        
+                        if (currentCol < 3 && gameBoard[row][currentCol + 1] === gameBoard[row][currentCol]) {
+                            gameBoard[row][currentCol + 1] *= 2;
+                            updateScore(gameBoard[row][currentCol + 1]);
+                            gameBoard[row][currentCol] = 0;
+                            moved = true;
+                        }
+                    }
+                }
+            }
+            
+            processMove(moved);
+            return moved;
+        }
+        
+        function processMove(moved) {
+            if (moved) {
+                setTimeout(() => {
+                    addNewTile();
+                    renderGameBoard();
+                    
+                    if (!gameWon) {
+                        checkWin();
+                    }
+                    
+                    if (!gameOver) {
+                        checkGameOver();
+                    }
+                    
+                    canMove = true;
+                }, 200);
+            } else {
+                canMove = true;
+            }
+        }
+        
+        function handleKeyDown(event) {
+            if (gameOver) return;
+            
+            switch (event.key) {
+                case 'ArrowUp':
+                    moveUp();
+                    break;
+                case 'ArrowDown':
+                    moveDown();
+                    break;
+                case 'ArrowLeft':
+                    moveLeft();
+                    break;
+                case 'ArrowRight':
+                    moveRight();
+                    break;
+            }
+        }
+        
+        let touchStartX = 0;
+        let touchStartY = 0;
+        
+        function handleTouchStart(event) {
+            touchStartX = event.touches[0].clientX;
+            touchStartY = event.touches[0].clientY;
+        }
+        
+        function handleTouchEnd(event) {
+            if (gameOver) return;
+            
+            const touchEndX = event.changedTouches[0].clientX;
+            const touchEndY = event.changedTouches[0].clientY;
+            
+            const diffX = touchEndX - touchStartX;
+            const diffY = touchEndY - touchStartY;
+            
+            if (Math.abs(diffX) > Math.abs(diffY)) {
+                if (Math.abs(diffX) > 30) {
+                    diffX > 0 ? moveRight() : moveLeft();
+                }
+            } else {
+                if (Math.abs(diffY) > 30) {
+                    diffY > 0 ? moveDown() : moveUp();
+                }
+            }
+        }
+        
+        // 事件监听
+        newGameButton.addEventListener('click', initGame);
+        restartAfterGameOverButton.addEventListener('click', initGame);
+        restartAfterWinButton.addEventListener('click', initGame);
+        continuePlayingButton.addEventListener('click', () => {
+            gameWinElement.classList.add('hidden');
+        });
+        directionButtons.up.addEventListener('click', moveUp);
+        directionButtons.down.addEventListener('click', moveDown);
+        directionButtons.left.addEventListener('click', moveLeft);
+        directionButtons.right.addEventListener('click', moveRight);
+        document.addEventListener('keydown', handleKeyDown);
+        gameBoardElement.addEventListener('touchstart', handleTouchStart, false);
+        gameBoardElement.addEventListener('touchend', handleTouchEnd, false);
+        howToPlayButton.addEventListener('click', () => {
+            instructionsModal.classList.remove('hidden');
+        });
+        closeInstructionsButton.addEventListener('click', () => {
+            instructionsModal.classList.add('hidden');
+        });
+        instructionsModal.addEventListener('click', (event) => {
+            if (event.target === instructionsModal) {
+                instructionsModal.classList.add('hidden');
+            }
+        });
+        
+        window.addEventListener('load', () => {
+            instructionsModal.classList.remove('hidden');
+            initGame();
+        });
+    </script>
+</body>
+</html>
+    
